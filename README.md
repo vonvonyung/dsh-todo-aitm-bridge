@@ -1,53 +1,91 @@
 # dsh-todo-aitm-bridge
 
-在 DSH 待办任务菜单中提供 “在 AI 任务台创建想法 / 开始工作” 的桥接插件。
+在 DSH 待办任务菜单中提供两个动作，把待办接到 AI 任务台：
 
-- 待办侧扩展点：`window.__dshTodoTaskActions` v1（见 `vonvonyung/dsh-task-todo` 的 `docs/todo-aitm-bridge_design.md`）
-- 不 import 待办或 AI 任务台的任何包；所有接缝都在运行时完成。
-- 不导出、复制或绕过 AI 任务台的 `L3` 句柄。
+- **在 AI 任务台创建想法**：保留原待办，建立 `sourceRef` 关联，按来源幂等。
+- **在 AI 任务台开始工作**：先展示 AI 任务台解析出的项目、引擎、模型与指令，用户明确确认后才启动；取消或确认失败都不会启动。
 
-## 当前实现状态
+## 架构
 
-| 阶段 | 内容 | 状态 |
-| --- | --- | --- |
-| 1 | 菜单 “在 AI 任务台创建想法”：保留原待办，`sourceRef` 关联，服务端按 `sourceRef` 幂等 | 客户端与测试已完成 |
-| 2 | 开始工作：先展示解析后的项目/引擎/模型与指令，**明确确认 (`=== true`) 才调用启动**；取消、抛错、双击均不启动 | 流程与测试已完成 |
-| 3 | agent 工具（需宿主级审批） | 未实现，按设计后置 |
-
-### 目录
-
-- `src/contract.js`：常量、`sourceRef`、待办 → 想法字段映射、幂等键、错误类型。
-- `src/bridge-client.js`：浏览器侧客户端，只请求桥自己的同源相对路由 `/dsh-todo-aitm-bridge/api/*`。超时、协议版本不兼容、网络失败分别映射为明确状态。
-- `src/start-flow.js`：创建 → 预览 → 确认 → 启动的流程，返回 `started / cancelled / partial / failed / busy`。
-- `src/todo-menu.js`：待办 API 版本检查、两行菜单动作、就绪事件后的延迟注册、可释放的 disposer。
-- `src/index.js`：浏览器入口 `installBridge(window)`。
-- `test/`：38 项 `node:test` 测试。
-
-### 运行测试
-
-```sh
-npm test   # node --test，无外部依赖
+```
+待办菜单 (window.__dshTodoTaskActions v1)
+   │  dist/client.js  ── 浏览器半边，只请求同源 /dsh-todo-aitm-bridge/api/*
+   ▼
+宿主半边 src/host/*  ── 校验 DSH 会话 / Origin / 输入，固定 4 条路由
+   │  ctx.get('aitmBridge')  （方式 A：ai-tasks-mgr 冻结的 Bridge v1 门面）
+   ▼
+AI 任务台  discovery · createIdea · previewStart · startWork
 ```
 
-## 尚未具备的前提（阻塞端到端）
+- 浏览器从不直接访问 AI 任务台，也不接触 bridge token、`L3`、`base` 或任意 action。
+- 没有任何通用转发；宿主只有以下路由：
 
-1. **DSH 宿主半边（服务端路由与插件清单）未实现。** 上面的 `/dsh-todo-aitm-bridge/api/*` 路由是本插件自己的 v1 契约，需由宿主半边实现；插件清单格式也需按 DSH 插件规范补齐，本仓库尚未确认。
-2. **AI 任务台没有可用的受限、版本化插件接口。** 现状：
-   - `/aitm-plugin/config` 是诊断性质的发现路由，返回随机 `base` 与诊断信息，不是承诺的 ABI；
-   - `/api/<action>` 可调用全部 action，且返回 `Access-Control-Allow-Origin: *`；
-   - `L3` 句柄对其他插件不可见，`createL3()` 只会新建第二个实例。
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/dsh-todo-aitm-bridge/api/health` | 返回 `aitm.state`：`ready` / `unavailable` / `incompatible` |
+| POST | `/dsh-todo-aitm-bridge/api/ideas` | 创建或复用想法（按 `sourceRef` 幂等） |
+| POST | `/dsh-todo-aitm-bridge/api/ideas/:id/start-preview` | 只读预览，返回 `preview` 与 `previewDigest` |
+| POST | `/dsh-todo-aitm-bridge/api/ideas/:id/start` | 启动；必须携带与预览一致的 `confirmedPreviewDigest` |
 
-   因此本仓库**没有**通过这些途径访问 AI 任务台。
-3. **AI 任务台需要提供的最小接口**（在 `ai-tasks-mgr` 仓库实现，不在本会话范围内）：
-   - 版本化发现响应：`{ service, protocol, base, capabilities }`，不含仓库路径或日志；
-   - `idea.create`：以 `sourceRef` 幂等，重复请求返回已有想法（`created:false`）；
-   - `idea.start-preview`：只读返回解析后的项目、引擎、模型、指令与副作用；
-   - `idea.start`：支持 `Idempotency-Key`，返回 `started` 与 `taskId`；
-   - 认证方式、允许调用的动作白名单，以及 `AITM_URL` 的地址范围。
+## 宿主端安全规则
 
-## 已知设计限制
+- **会话**：通过 DSH 的 `connection.admit(req)` 校验；没有该服务或被拒绝时一律失败关闭（401/403）。
+- **来源**：拒绝 `Sec-Fetch-Site: cross-site`、`Origin: null` 以及与 `Host` 不一致的 `Origin`。
+- **输入**：`sourceRef.plugin` 固定为 `dsh-todo`，忽略浏览器传来的值；标题、备注、截止日期、标签均有长度与类型限制；请求体需为 `application/json`，上限 64 KB；想法 ID 必须是安全字符。
+- **幂等键由宿主派生**，不接受浏览器的请求头：
+  - 创建：`dsh-todo:<taskId>:idea`
+  - 启动：`dsh-todo:<taskId>:start:<ideaId>`
+- **确认绑定到配置**：启动前宿主重新预览，若与用户确认的摘要不一致，返回 409 `preview-changed`，不启动。启动请求中的 `instruction` 会被丢弃。
+- **响应白名单**：只返回约定字段，不包含内部路径、AI 任务台版本或门面的 `base`。
+- **超时**：每次调用门面有 15 秒超时，超时映射为 503。
+- **错误映射**：只有 AI 任务台的用户可纠正错误（如 `conflict`、`blocked`、`no-repo`、`engine-not-ready`、`idempotency-conflict`）原样透出；其余（包括内部错误、未知码、网络错误）统一为 503 `aitm-unavailable`，消息为“AI 任务台当前不可用”。
 
-- 开始工作时会先创建想法（步骤 1），再展示确认框。取消确认时想法已存在，结果会如实提示“想法已创建，未开始工作”。
-- 确认框使用 `window.confirm`，仅适用于人工点击菜单的场景，**不能**作为 agent 调用的授权边界。没有原生对话框时默认拒绝。
-- `due` 目前按原字符串透传，日期与时区语义尚未在契约中定义。
-- v1 不做双向状态同步。
+## 依赖机制与降级
+
+插件在 `apply(ctx)` 中**不**把 `aitmBridge` 声明为必需 `inject`，所有依赖都是可选的、懒取的：
+
+| 依赖 | 缺失时的行为 |
+| --- | --- |
+| `aitmBridge`（ai-tasks-mgr 通过 `ctx.provide` 提供） | 每个请求重新 `ctx.get`；缺失或晚加载时，`health` 报 `unavailable`，业务路由 503。菜单行保留为灰色禁用项，并显示“AI 任务台当前不可用”。服务晚加载后，下一次探测即可恢复。 |
+| `connection`（DSH 会话） | 所有路由 401，失败关闭 |
+| `webServer` | 只记录警告，不注册路由（浏览器半边无法工作） |
+
+门面检查：必须是 `protocol: 1`，具备 `discovery / createIdea / previewStart / startWork` 四个方法；`discovery` 返回的 `service` 必须是 `ai-tasks-mgr`，且 `capabilities` 包含 `idea.create`、`idea.start-preview`、`idea.start`。否则为 `incompatible`，不会把请求发给错误目标。
+
+浏览器端的菜单状态变化会触发菜单刷新：同 ID 重新注册会替换旧记录，因此禁用项无需重新打开菜单即可更新。
+
+## 目录
+
+- `src/contract.js`：共享常量、`sourceRef`、待办 → 想法映射、幂等键。
+- `src/host/index.js`：DSH 插件入口（`name`、`inject`、`apply`）。
+- `src/host/http.js`：路由、会话与来源校验、输入校验、错误映射。
+- `src/host/aitm.js`：门面适配（就绪检查、超时、错误映射、预览视图与摘要）。
+- `src/bridge-client.js`：浏览器侧客户端与状态机。
+- `src/start-flow.js`：创建 → 预览 → 确认 → 启动流程。
+- `src/todo-menu.js`：待办 API 版本检查、菜单行注册与刷新。
+- `src/index.js`、`src/client-entry.js`：浏览器入口；构建为 `dist/client.js`。
+- `cordis.patch.yml`：DSH bundle patch；`package.json` 的 `dsh` 字段声明 web 客户端。
+
+## 开发
+
+```sh
+npm install
+npm test     # pretest 先构建 dist/client.js，然后运行 node --test
+npm run build
+```
+
+`dist/client.js` 已提交，DSH 安装时无需构建。
+
+## 依赖版本
+
+- AI 任务台：`ai-tasks-mgr` 提交 `0bfef98`（v0.3.48，Bridge v1）。
+- 本插件仅用 Node 内置模块；`esbuild` 只作为开发依赖，用于打包浏览器半边。
+
+## 未验证与限制
+
+- **未在真实 DSH 中加载验证。** 本环境没有运行 DSH 宿主。依赖的 DSH 接口（`ctx.get`、`ctx.effect`、`webServer.register` 的 `prefix` 语义、`connection.admit`、`window.__ModuleLoader__.load`）均参照 ai-tasks-mgr 与 dsh-task-todo 现有代码的用法，尚未实测。
+- **未与真实 AI 任务台端到端联调。** 测试使用按门面契约模拟的假门面。
+- 启动流程中，“创建想法”发生在确认框之前；取消后想法仍然存在，提示会如实说明。
+- 确认框使用 `window.confirm`，仅适用于人工点击菜单的场景，**不是** agent 的授权边界。没有原生对话框时默认拒绝。
+- `due` 按原字符串透传，日期与时区语义尚未在契约中定义。
+- v1 不做双向状态同步；agent 工具仍后置，并需宿主侧审批。

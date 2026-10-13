@@ -1,13 +1,39 @@
 {
   "name": "dsh-todo-aitm-bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Bridge plugin: DSH todo task menu -> AI 任务台",
+  "description": "Bridge plugin: DSH todo task menu -> AI 任务台 (host routes + browser menu)",
   "type": "module",
+  "main": "./src/host/index.js",
+  "exports": {
+    ".": "./src/host/index.js",
+    "./client": "./dist/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "files": [
+    "src/",
+    "dist/client.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
   "scripts": {
+    "build": "node scripts/build-client.mjs",
+    "pretest": "node scripts/build-client.mjs",
     "test": "node --test"
   },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }

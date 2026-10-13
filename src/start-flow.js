@@ -65,7 +65,10 @@ async function run(client, task, sourceRef, confirm) {
   if (!approved) return { ...base, state: 'cancelled' };
 
   try {
-    const r = await client.startWork(idea.ideaId, { sourceRef });
+    const r = await client.startWork(idea.ideaId, {
+      sourceRef,
+      confirmedPreviewDigest: preview.digest,
+    });
     if (!r.started) {
       return { ...base, state: 'partial', stage: 'start', error: 'AI 任务台未确认启动' };
     }

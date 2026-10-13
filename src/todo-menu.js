@@ -94,15 +94,33 @@ export function installTodoMenu(scope, actions, { log = () => {} } = {}) {
   if (hasListeners) scope.addEventListener(TODO_READY_EVENT, tryInstall);
   tryInstall();
 
-  return () => {
+  const dispose = () => {
     if (hasListeners) scope.removeEventListener(TODO_READY_EVENT, tryInstall);
-    for (const dispose of disposers.splice(0)) {
+    for (const d of disposers.splice(0)) {
       try {
-        dispose();
+        d();
       } catch {
         // a stale disposer must not break teardown
       }
     }
     installed = false;
   };
+
+  /**
+   * Re-register our actions. Registering the same id replaces the record and makes the
+   * todo menu re-evaluate enabled/disabledReason, so a state change shows up without reopening.
+   */
+  dispose.refresh = () => {
+    if (!installed) return;
+    const r = resolveTodoApi(scope);
+    if (!r.ok) return;
+    for (const action of actions) {
+      try {
+        disposers.push(r.api.register(action));
+      } catch (err) {
+        log(`failed to refresh action ${action.id}: ${err && err.message}`);
+      }
+    }
+  };
+  return dispose;
 }

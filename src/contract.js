@@ -59,3 +59,13 @@ export function clampText(text, max = MAX_TOAST_LENGTH) {
   const s = String(text);
   return s.length <= max ? s : `${s.slice(0, max - 1)}…`;
 }
+
+// ---- Host-side constants (Bridge v1 of this plugin's own routes + AI 任务台 Bridge v1) ----
+export const PLUGIN_ID = 'dsh-todo-aitm-bridge';
+export const BRIDGE_VERSION = '0.2.0';
+export const ROUTE_PREFIX = '/dsh-todo-aitm-bridge';
+export const API_BASE = `${ROUTE_PREFIX}/api`;
+export const AITM_SERVICE_ID = 'ai-tasks-mgr';
+export const REQUIRED_AITM_CAPABILITIES = Object.freeze(['idea.create', 'idea.start-preview', 'idea.start']);
+export const MAX_BODY_BYTES = 64 * 1024;
+export const AITM_CALL_TIMEOUT_MS = 15000;

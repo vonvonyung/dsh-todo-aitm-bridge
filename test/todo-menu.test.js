@@ -179,3 +179,34 @@ test('installBridge wires both rows into the todo registry', () => {
   assert.deepEqual(scope.registered.map((a) => a.id), ['aitm-idea', 'aitm-start']);
   dispose();
 });
+
+test('refresh re-registers our rows so an AI 任务台 outage shows a disabled row without reopening the menu', async () => {
+  const { createBridgeClient } = await import('../src/bridge-client.js');
+  const scope = fakeScope();
+  scope.confirm = () => true;
+  let online = true;
+  const fetchImpl = async () => {
+    if (online) return { ok: true, status: 200, json: async () => ({ protocol: 1, ok: true, aitm: { state: 'ready' } }) };
+    return { ok: false, status: 503, json: async () => ({ protocol: 1, ok: false, error: { code: 'aitm-unavailable', message: 'AI 任务台当前不可用' } }) };
+  };
+  const client = createBridgeClient({ fetchImpl });
+  const dispose = installBridge(scope, { bridge: client });
+  await client.health();
+  assert.equal(client.isUsable(), true);
+
+  online = false;
+  await client.health().catch(() => {});
+  assert.equal(client.isUsable(), false);
+  // Re-registered rows: the latest record reflects the new state.
+  const latest = scope.registered.filter((a) => a.id === 'aitm-idea').at(-1);
+  assert.equal(latest.enabled({ id: 't' }), false);
+  assert.equal(latest.disabledReason({ id: 't' }), 'AI 任务台当前不可用');
+  dispose();
+});
+
+test('installBridge tolerates a bridge without subscribe/health (test doubles)', () => {
+  const scope = fakeScope();
+  const dispose = installBridge(scope, { bridge: usableBridge() });
+  assert.equal(scope.registered.length, 2);
+  dispose();
+});

@@ -23,10 +23,10 @@ function fakeBridge({ createFails, previewFails, startResult = { started: true, 
     async previewStart(ideaId) {
       log.push(['preview', ideaId]);
       if (previewFails) throw new BridgeError('timeout', '连接 AI 任务台超时，请稍后重试');
-      return preview;
+      return { ...preview, digest: 'dig-1' };
     },
-    async startWork(ideaId, { sourceRef }) {
-      log.push(['start', ideaId, sourceRef.taskId]);
+    async startWork(ideaId, { sourceRef, confirmedPreviewDigest }) {
+      log.push(['start', ideaId, sourceRef.taskId, confirmedPreviewDigest]);
       if (startFails) throw new BridgeError('http-500', '内部错误');
       return startResult;
     },
@@ -49,7 +49,9 @@ test('happy path: create -> preview -> explicit confirm -> start, in order', asy
     client.log.map((x) => x[0]),
     ['create', 'preview', 'start'],
   );
-  assert.deepEqual(shown, [preview]);
+  assert.deepEqual(shown, [{ ...preview, digest: 'dig-1' }]);
+  // Start is bound to exactly the digest the user confirmed.
+  assert.deepEqual(client.log.at(-1), ['start', 'i1', 'happy', 'dig-1']);
 });
 
 test('cancel: confirm returning false never calls start', async () => {

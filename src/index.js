@@ -1,4 +1,4 @@
-// Browser entry: wires the bridge client into the todo task menu.
+// Browser wiring: attaches the bridge's menu rows to the todo task menu.
 
 import { createBridgeClient } from './bridge-client.js';
 import { createIdeaAction, defaultConfirm, installTodoMenu, startWorkAction } from './todo-menu.js';
@@ -11,9 +11,18 @@ export { PROTOCOL_VERSION, TODO_TASK_ACTIONS_API_VERSION, TODO_READY_EVENT } fro
 export function installBridge(scope = globalThis, { bridge, log } = {}) {
   const client = bridge ?? createBridgeClient({ fetchImpl: (...args) => scope.fetch(...args) });
   const confirm = defaultConfirm(scope);
-  return installTodoMenu(
+  const dispose = installTodoMenu(
     scope,
     [createIdeaAction({ bridge: client }), startWorkAction({ bridge: client, confirm })],
     { log },
   );
+
+  const unsubscribe = typeof client.subscribe === 'function' ? client.subscribe(() => dispose.refresh()) : () => {};
+  // Probe once so disabled rows appear without waiting for a click. Failures are already reflected in state.
+  if (typeof client.health === 'function') client.health().catch(() => {});
+
+  return () => {
+    unsubscribe();
+    dispose();
+  };
 }

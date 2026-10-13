@@ -1,0 +1,5 @@
+# Bundle patch: lets DSH load this plugin from the profile.
+# `name:` is the npm package name (resolved by the Cordis loader from node_modules).
+- insert:
+    - id: dsh-todo-aitm-bridge
+      name: 'dsh-todo-aitm-bridge'
