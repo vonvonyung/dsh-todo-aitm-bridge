@@ -387,18 +387,23 @@
   }
 
   // src/client-entry.js
-  var start = () => installBridge(window, {
-    log: (msg) => console.warn("[dsh-todo-aitm-bridge]", msg)
-  });
+  var plugin = {
+    name: "dsh-todo-aitm-bridge",
+    // No Cordis services are needed: the todo menu is reached through window.__dshTodoTaskActions.
+    inject: [],
+    // Returns the dispose function from installBridge, so teardown can remove the menu rows.
+    apply() {
+      return installBridge(window, {
+        log: (msg) => console.warn("[dsh-todo-aitm-bridge]", msg)
+      });
+    }
+  };
   if (window.__ModuleLoader__ && typeof window.__ModuleLoader__.load === "function") {
     window.__ModuleLoader__.load({
       id: "dsh-todo-aitm-bridge",
-      factory: () => {
-        start();
-        return {};
-      }
+      factory: () => plugin
     });
   } else {
-    start();
+    plugin.apply();
   }
 })();
