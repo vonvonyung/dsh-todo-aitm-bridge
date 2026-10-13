@@ -177,3 +177,97 @@ test('built browser half is a classic script that uses the DSH module loader', (
   assert.match(js, /\/dsh-todo-aitm-bridge\/api/);
   assert.doesNotMatch(js, /aitm-plugin\/bridge/, 'browser must never address the AITM facade or its base');
 });
+
+// ---------------------------------------------------------------- deferred webServer (real DSH)
+
+/** A ctx like DSH's: webServer is absent at apply() time, and inject() defers the callback. */
+function deferredCtx() {
+  const services = {};
+  const injections = [];
+  const ctx = {
+    services,
+    injections,
+    get(name) {
+      return services[name];
+    },
+    inject(deps, fn) {
+      injections.push({ deps, fn });
+    },
+  };
+  return ctx;
+}
+
+test('webServer not ready at apply(): uses ctx.inject and mounts the route once the service arrives', async () => {
+  const ctx = deferredCtx();
+  plugin.apply(ctx);
+
+  assert.equal(ctx.injections.length, 1, 'must wait via ctx.inject instead of giving up');
+  assert.deepEqual([...ctx.injections[0].deps], ['webServer']);
+
+  // Nothing is mounted before the service exists.
+  const ws = fakeWebServer();
+  // Real DSH: the webserver starts later and the injected callback runs with a scope ctx.
+  ctx.services.webServer = ws;
+  ctx.services.connection = { admit: () => ({ user: 'u' }) };
+  ctx.injections[0].fn({
+    get: (n) => ctx.services[n],
+    webServer: ws,
+    effect(fn) {
+      fn();
+    },
+  });
+
+  assert.equal(ws.routes.length, 1);
+  assert.equal(ws.routes[0].kind, 'prefix');
+  assert.equal(ws.routes[0].path, '/dsh-todo-aitm-bridge');
+
+  // The mounted route really serves the API (health with no aitmBridge -> unavailable).
+  const res = resFor();
+  await ws.routes[0].handler(reqFor('/dsh-todo-aitm-bridge/api/health'), res);
+  assert.equal(res.status, 200);
+  assert.match(res.text, /"state":"unavailable"/);
+});
+
+test('the injected callback without a webServer mounts nothing and does not throw', () => {
+  const ctx = deferredCtx();
+  plugin.apply(ctx);
+  assert.doesNotThrow(() => ctx.injections[0].fn({ get: () => undefined }));
+});
+
+test('deferred mount uses the scope ctx effect with a description and keeps the dispose', () => {
+  const ctx = deferredCtx();
+  plugin.apply(ctx);
+  const ws = fakeWebServer();
+  const effects = [];
+  ctx.injections[0].fn({
+    get: () => ws,
+    webServer: ws,
+    effect(fn, description) {
+      effects.push(description);
+      return fn();
+    },
+  });
+  assert.deepEqual(effects, ['dsh-todo-aitm-bridge.http']);
+  assert.equal(ws.routes.length, 1);
+});
+
+test('when webServer is already present, apply() mounts directly and never calls ctx.inject', () => {
+  const ctx = deferredCtx();
+  ctx.services.webServer = fakeWebServer();
+  plugin.apply(ctx);
+  assert.equal(ctx.injections.length, 0);
+  assert.equal(ctx.services.webServer.routes.length, 1);
+});
+
+test('with neither webServer nor inject, apply() warns once and stays degraded', () => {
+  const warnings = [];
+  const original = console.warn;
+  console.warn = (...args) => warnings.push(args);
+  try {
+    plugin.apply({ get: () => undefined });
+  } finally {
+    console.warn = original;
+  }
+  assert.equal(warnings.length, 1);
+  assert.match(String(warnings[0][0]), /webServer unavailable/);
+});
