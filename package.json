@@ -1,0 +1,13 @@
+{
+  "name": "dsh-todo-aitm-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bridge plugin: DSH todo task menu -> AI 任务台",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
