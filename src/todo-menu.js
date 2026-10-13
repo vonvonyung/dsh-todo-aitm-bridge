@@ -33,7 +33,9 @@ export function createIdeaAction({ bridge }) {
     order: 200,
     visible: () => true,
     enabled: () => bridge.isUsable(),
-    disabledReason: () => 'AI 任务台当前不可用',
+    // The todo app computes `enabled && disabledReason === ''`, so an empty string
+    // is what makes an enabled row actually clickable.
+    disabledReason: () => (bridge.isUsable() ? '' : 'AI 任务台当前不可用'),
     run: async (task) => {
       const { created } = await bridge.createIdea(mapTaskToIdea(task));
       return created ? '已在 AI 任务台创建想法，原待办保持不变' : '该待办已有关联想法，未重复创建';
@@ -49,7 +51,9 @@ export function startWorkAction({ bridge, confirm }) {
     order: 210,
     visible: () => true,
     enabled: () => bridge.isUsable(),
-    disabledReason: () => 'AI 任务台当前不可用',
+    // The todo app computes `enabled && disabledReason === ''`, so an empty string
+    // is what makes an enabled row actually clickable.
+    disabledReason: () => (bridge.isUsable() ? '' : 'AI 任务台当前不可用'),
     run: async (task) => {
       const result = await startWorkFlow({ client: bridge, task, confirm });
       return toastFor(result);

@@ -210,3 +210,39 @@ test('installBridge tolerates a bridge without subscribe/health (test doubles)',
   assert.equal(scope.registered.length, 2);
   dispose();
 });
+
+/** Mirrors dsh-task-todo's forTask(): enabled = enabled && disabledReason === '' */
+function todoRowEnabled(action, task = { id: 't' }) {
+  const enabled = action.enabled(task) !== false;
+  const reason = typeof action.disabledReason === 'function' ? action.disabledReason(task) : action.disabledReason ?? '';
+  return { enabled: enabled && reason === '', disabledReason: reason };
+}
+
+test('disabledReason is the empty string when the bridge is usable, so the todo row is enabled', () => {
+  for (const make of [
+    (bridge) => createIdeaAction({ bridge }),
+    (bridge) => startWorkAction({ bridge, confirm: () => true }),
+  ]) {
+    const action = make(usableBridge());
+    assert.equal(action.disabledReason({ id: 't' }), '');
+    assert.deepEqual(todoRowEnabled(action), { enabled: true, disabledReason: '' });
+  }
+});
+
+test('when the bridge is unusable the row is disabled and explains why', () => {
+  for (const make of [
+    (bridge) => createIdeaAction({ bridge }),
+    (bridge) => startWorkAction({ bridge, confirm: () => true }),
+  ]) {
+    const action = make(usableBridge({ isUsable: () => false }));
+    assert.deepEqual(todoRowEnabled(action), { enabled: false, disabledReason: 'AI 任务台当前不可用' });
+  }
+});
+
+test('a state change flips the row between enabled and disabled without rebuilding the action', () => {
+  let usable = false;
+  const action = createIdeaAction({ bridge: usableBridge({ isUsable: () => usable }) });
+  assert.equal(todoRowEnabled(action).enabled, false);
+  usable = true;
+  assert.equal(todoRowEnabled(action).enabled, true);
+});

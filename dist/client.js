@@ -292,7 +292,9 @@
       order: 200,
       visible: () => true,
       enabled: () => bridge.isUsable(),
-      disabledReason: () => "AI \u4EFB\u52A1\u53F0\u5F53\u524D\u4E0D\u53EF\u7528",
+      // The todo app computes `enabled && disabledReason === ''`, so an empty string
+      // is what makes an enabled row actually clickable.
+      disabledReason: () => bridge.isUsable() ? "" : "AI \u4EFB\u52A1\u53F0\u5F53\u524D\u4E0D\u53EF\u7528",
       run: async (task) => {
         const { created } = await bridge.createIdea(mapTaskToIdea(task));
         return created ? "\u5DF2\u5728 AI \u4EFB\u52A1\u53F0\u521B\u5EFA\u60F3\u6CD5\uFF0C\u539F\u5F85\u529E\u4FDD\u6301\u4E0D\u53D8" : "\u8BE5\u5F85\u529E\u5DF2\u6709\u5173\u8054\u60F3\u6CD5\uFF0C\u672A\u91CD\u590D\u521B\u5EFA";
@@ -306,7 +308,9 @@
       order: 210,
       visible: () => true,
       enabled: () => bridge.isUsable(),
-      disabledReason: () => "AI \u4EFB\u52A1\u53F0\u5F53\u524D\u4E0D\u53EF\u7528",
+      // The todo app computes `enabled && disabledReason === ''`, so an empty string
+      // is what makes an enabled row actually clickable.
+      disabledReason: () => bridge.isUsable() ? "" : "AI \u4EFB\u52A1\u53F0\u5F53\u524D\u4E0D\u53EF\u7528",
       run: async (task) => {
         const result = await startWorkFlow({ client: bridge, task, confirm });
         return toastFor(result);

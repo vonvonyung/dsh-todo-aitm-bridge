@@ -62,7 +62,7 @@ export function clampText(text, max = MAX_TOAST_LENGTH) {
 
 // ---- Host-side constants (Bridge v1 of this plugin's own routes + AI 任务台 Bridge v1) ----
 export const PLUGIN_ID = 'dsh-todo-aitm-bridge';
-export const BRIDGE_VERSION = '0.2.0';
+export const BRIDGE_VERSION = '0.2.1';
 export const ROUTE_PREFIX = '/dsh-todo-aitm-bridge';
 export const API_BASE = `${ROUTE_PREFIX}/api`;
 export const AITM_SERVICE_ID = 'ai-tasks-mgr';
